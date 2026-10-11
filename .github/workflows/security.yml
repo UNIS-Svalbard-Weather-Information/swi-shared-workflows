@@ -1,0 +1,161 @@
+name: Security (reusable)
+
+# Shared security checks for every SWI repository. Callers keep a ~10 line stub
+# (see templates/stubs/security.yml); the logic and tool versions live here.
+#
+# Everything runs from GitHub-owned actions or open-source CLIs started inside the
+# job: no third-party service is contacted besides package and image registries.
+
+on:
+  workflow_call:
+    inputs:
+      shared-ref:
+        description: Ref of swi-shared-workflows that holds config/ (match the ref the caller uses)
+        type: string
+        default: main
+      dockerfile:
+        description: Dockerfile to build and scan, skipped when it does not exist
+        type: string
+        default: Dockerfile
+      docker-context:
+        description: Docker build context
+        type: string
+        default: .
+      pnpm-audit-level:
+        description: Minimum severity that fails `pnpm audit`
+        type: string
+        default: high
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout shared config
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: UNIS-Svalbard-Weather-Information/swi-shared-workflows
+          ref: ${{ inputs.shared-ref }}
+          path: .shared
+          persist-credentials: false
+
+      # The gitleaks GitHub Action needs a paid licence for organisation repos; the CLI is free.
+      - name: Scan full history for committed secrets
+        run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 \
+            git /repo --config /repo/.shared/config/gitleaks.toml --redact --verbose
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    env:
+      PNPM_AUDIT_LEVEL: ${{ inputs.pnpm-audit-level }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Detect ecosystems
+        id: detect
+        run: |
+          [ -f pnpm-lock.yaml ] && echo "pnpm=true" >> "$GITHUB_OUTPUT" || true
+          [ -f uv.lock ] && echo "uv=true" >> "$GITHUB_OUTPUT" || true
+          [ -f requirements.txt ] && echo "pip=true" >> "$GITHUB_OUTPUT" || true
+          # Not a failure: some repos (configuration only) have nothing to audit.
+          exit 0
+
+      - name: Set up pnpm
+        if: steps.detect.outputs.pnpm == 'true'
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - name: Set up Node.js
+        if: steps.detect.outputs.pnpm == 'true'
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: Audit production dependencies (pnpm)
+        if: steps.detect.outputs.pnpm == 'true'
+        run: pnpm audit --prod --audit-level="$PNPM_AUDIT_LEVEL"
+
+      - name: Install audit tools
+        if: steps.detect.outputs.uv == 'true' || steps.detect.outputs.pip == 'true'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/audit"
+          "$RUNNER_TEMP/audit/bin/pip" install --quiet uv==0.13.0 pip-audit==2.10.1
+
+      - name: Audit locked dependencies (uv)
+        if: steps.detect.outputs.uv == 'true'
+        run: |
+          "$RUNNER_TEMP/audit/bin/uv" export --frozen --no-dev --no-emit-project -o "$RUNNER_TEMP/requirements.txt"
+          "$RUNNER_TEMP/audit/bin/pip-audit" -r "$RUNNER_TEMP/requirements.txt" --no-deps --disable-pip
+
+      - name: Audit requirements.txt (pip)
+        if: steps.detect.outputs.pip == 'true' && steps.detect.outputs.uv != 'true'
+        run: |
+          "$RUNNER_TEMP/audit/bin/pip-audit" -r requirements.txt
+
+  image-scan:
+    name: Image scan
+    runs-on: ubuntu-latest
+    env:
+      DOCKERFILE: ${{ inputs.dockerfile }}
+      DOCKER_CONTEXT: ${{ inputs.docker-context }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Detect Dockerfile
+        id: detect
+        run: |
+          if [ -f "$DOCKERFILE" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Build image
+        if: steps.detect.outputs.present == 'true'
+        run: docker build -f "$DOCKERFILE" -t swi-scan:candidate "$DOCKER_CONTEXT"
+
+      - name: Scan image with Trivy
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            ghcr.io/aquasecurity/trivy:0.75.0 image \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 swi-scan:candidate
+
+  workflow-lint:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Detect workflows
+        id: detect
+        run: |
+          if ls .github/workflows/*.y*ml >/dev/null 2>&1; then echo "present=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: actionlint
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
+
+      # Catches template injection, excessive permissions, unpinned actions.
+      - name: zizmor
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/zizmorcore/zizmor:1.30.1 \
+            --offline --min-severity medium --format plain .github/workflows

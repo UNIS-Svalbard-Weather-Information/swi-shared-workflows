@@ -1,0 +1,23 @@
+title = "SWI gitleaks configuration"
+
+[extend]
+useDefault = true
+
+# Known, reviewed findings. Keep each entry as narrow as possible and say why.
+
+# swi-metobs-caching and swi-avalanche-caching: a MET Norway Frost client ID was
+# committed in static/config/{api,example_api}.json in January 2025. It has been
+# rotated (October 2026) and the files no longer exist on main.
+[[allowlists]]
+description = "Rotated Frost client ID in historical config files"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''static/config/(example_)?api\.json$''']
+
+# swi-production-deployment: the smoke test calls the throwaway local stack
+# (*.localhost, self-signed) with a fixed test credential.
+[[allowlists]]
+description = "Test credential for the local smoke-test stack"
+condition = "AND"
+targetRules = ["curl-auth-user"]
+paths = ['''\.github/workflows/deploy-smoke-test\.yml$''']

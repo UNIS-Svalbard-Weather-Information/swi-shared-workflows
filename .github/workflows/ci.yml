@@ -1,0 +1,17 @@
+name: CI
+
+# This repository checks itself with the same reusable workflow it publishes.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    uses: ./.github/workflows/security.yml
+    with:
+      shared-ref: ${{ github.sha }}
