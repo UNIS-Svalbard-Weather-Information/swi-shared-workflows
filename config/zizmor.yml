@@ -1,0 +1,9 @@
+# Shared zizmor policy.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # Third-party actions must be pinned to a commit SHA (zizmor's default).
+        # Reusable workflows from this organisation may be pinned to a ref (branch or
+        # tag), so callers can follow a moving v1 tag.
+        UNIS-Svalbard-Weather-Information/*: ref-pin
