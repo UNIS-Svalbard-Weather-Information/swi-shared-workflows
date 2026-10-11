@@ -138,7 +138,7 @@ jobs:
         if: steps.detect.outputs.present == 'true'
         run: |
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-            ghcr.io/aquasecurity/trivy:0.75.0 image \
+            ghcr.io/aquasecurity/trivy:0.75.0 image --timeout 15m \
             --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 swi-scan:candidate
 
   workflow-lint:
