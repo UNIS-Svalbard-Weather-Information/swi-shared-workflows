@@ -21,6 +21,10 @@ on:
         description: Docker build context
         type: string
         default: .
+      report-only:
+        description: Show findings in the logs without failing the job (use while a repo clears its backlog)
+        type: boolean
+        default: false
       pnpm-audit-level:
         description: Minimum severity that fails `pnpm audit`
         type: string
@@ -33,6 +37,7 @@ jobs:
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
+    continue-on-error: ${{ inputs.report-only }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -57,6 +62,7 @@ jobs:
   dependency-audit:
     name: Dependency audit
     runs-on: ubuntu-latest
+    continue-on-error: ${{ inputs.report-only }}
     env:
       PNPM_AUDIT_LEVEL: ${{ inputs.pnpm-audit-level }}
     steps:
@@ -109,6 +115,7 @@ jobs:
   image-scan:
     name: Image scan
     runs-on: ubuntu-latest
+    continue-on-error: ${{ inputs.report-only }}
     env:
       DOCKERFILE: ${{ inputs.dockerfile }}
       DOCKER_CONTEXT: ${{ inputs.docker-context }}
@@ -137,6 +144,7 @@ jobs:
   workflow-lint:
     name: Workflow lint
     runs-on: ubuntu-latest
+    continue-on-error: ${{ inputs.report-only }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
