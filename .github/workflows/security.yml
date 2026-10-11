@@ -117,8 +117,8 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: ${{ inputs.report-only }}
     env:
-      DOCKERFILE: ${{ inputs.dockerfile }}
-      DOCKER_CONTEXT: ${{ inputs.docker-context }}
+      SCAN_DOCKERFILE: ${{ inputs.dockerfile }}
+      SCAN_CONTEXT: ${{ inputs.docker-context }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -128,11 +128,11 @@ jobs:
       - name: Detect Dockerfile
         id: detect
         run: |
-          if [ -f "$DOCKERFILE" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; fi
+          if [ -f "$SCAN_DOCKERFILE" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; fi
 
       - name: Build image
         if: steps.detect.outputs.present == 'true'
-        run: docker build -f "$DOCKERFILE" -t swi-scan:candidate "$DOCKER_CONTEXT"
+        run: docker build -f "$SCAN_DOCKERFILE" -t swi-scan:candidate "$SCAN_CONTEXT"
 
       - name: Scan image with Trivy
         if: steps.detect.outputs.present == 'true'
@@ -156,14 +156,13 @@ jobs:
         run: |
           if ls .github/workflows/*.y*ml >/dev/null 2>&1; then echo "present=true" >> "$GITHUB_OUTPUT"; fi
 
-      - name: actionlint
+      # Both tools always run so one failing does not hide the other's findings.
+      # zizmor catches template injection, excessive permissions and unpinned actions.
+      - name: Lint workflows (actionlint, zizmor)
         if: steps.detect.outputs.present == 'true'
         run: |
-          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
-
-      # Catches template injection, excessive permissions, unpinned actions.
-      - name: zizmor
-        if: steps.detect.outputs.present == 'true'
-        run: |
+          status=0
+          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color || status=1
           docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/zizmorcore/zizmor:1.30.1 \
-            --offline --min-severity medium --format plain .github/workflows
+            --offline --min-severity medium --format plain .github/workflows || status=1
+          exit "$status"
