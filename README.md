@@ -21,7 +21,7 @@ Change a check here once instead of in every repository.
 2. Copy the matching `templates/dependabot/*.yml` to `.github/dependabot.yml`.
 3. Delete `renovate.json` if present.
 
-Inputs of the reusable workflow are optional: `dockerfile`, `docker-context`, `pnpm-audit-level`, `shared-ref`, `report-only`.
+Inputs of the reusable workflow are optional: `dockerfile`, `docker-context`, `pnpm-audit-level`, `shared-ref`, `report-only`, `runner` (JSON `runs-on`, default `["ubuntu-latest"]`).
 
 **Rollout:** stubs start with `report-only: true` (findings are logged, builds stay green). Once a repository's findings are fixed, delete that line so the checks enforce.
 
