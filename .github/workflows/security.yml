@@ -29,6 +29,10 @@ on:
         description: Minimum severity that fails `pnpm audit`
         type: string
         default: high
+      runner:
+        description: JSON for runs-on, e.g. '["self-hosted","linux"]'. Defaults to GitHub-hosted.
+        type: string
+        default: '["ubuntu-latest"]'
 
 permissions:
   contents: read
@@ -36,7 +40,7 @@ permissions:
 jobs:
   secrets:
     name: Secret scan
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner) }}
     continue-on-error: ${{ inputs.report-only }}
     steps:
       - name: Checkout repository
@@ -61,7 +65,7 @@ jobs:
 
   dependency-audit:
     name: Dependency audit
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner) }}
     continue-on-error: ${{ inputs.report-only }}
     env:
       PNPM_AUDIT_LEVEL: ${{ inputs.pnpm-audit-level }}
@@ -113,7 +117,7 @@ jobs:
 
   image-scan:
     name: Image scan
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner) }}
     continue-on-error: ${{ inputs.report-only }}
     env:
       SCAN_DOCKERFILE: ${{ inputs.dockerfile }}
@@ -142,7 +146,7 @@ jobs:
 
   workflow-lint:
     name: Workflow lint
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner) }}
     continue-on-error: ${{ inputs.report-only }}
     steps:
       - name: Checkout repository
